@@ -10,16 +10,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 const state = {
-  step: 'welcome',
-  registration: {
-    firstName: '',
-    lastName: '',
-    age: '',
-    phone: '',
-    telegram: '',
-    photo: null,
-    photoName: '',
-  },
+  step: 'test_type',
   test_type: null,
   answers: {},
   periodIndex: 0,
@@ -36,12 +27,13 @@ function esc(s) {
 }
 
 function stepsForType(type) {
-  if (type === 'regular') return ['welcome', 'register', 'test_type', 'period', 'season', 'result'];
-  return ['welcome', 'register', 'test_type', 'menopause', 'season', 'result'];
+  if (type === 'regular') return ['test_type', 'period', 'season', 'result'];
+  return ['test_type', 'menopause', 'season', 'result'];
 }
 
 function progressPct() {
-  const steps = stepsForType(state.test_type || 'regular');
+  if (!state.test_type) return 0;
+  const steps = stepsForType(state.test_type);
   const idx = Math.max(0, steps.indexOf(state.step === 'period' ? 'period' : state.step));
   const periodExtra = state.test_type === 'regular' && state.step === 'period' ? state.periodIndex / 4 : 0;
   const base = idx / (steps.length - 1);
@@ -75,70 +67,23 @@ function renderProgress() {
   return `<div class="progress" aria-hidden="true"><div class="progress__bar" style="width:${progressPct()}%"></div></div>`;
 }
 
-function renderWelcome() {
-  return `
-    <section class="screen">
-      <p class="eyebrow">Татьяна Солнечная</p>
-      <h1>Анкета женского либидо</h1>
-      <p class="lead">Заполните как на бумажном бланке — ставьте галочки напротив ответов. Удобно с телефона.</p>
-      <button type="button" class="btn btn--primary btn--wide" data-action="start">Начать</button>
-      <p class="disclaimer">Конфиденциально. Результат отправляется специалисту в Telegram.</p>
-    </section>`;
-}
-
-function renderRegister() {
-  const r = state.registration;
-  const photoPreview = r.photo
-    ? `<div class="photo-preview"><img src="${r.photo}" alt="Фото"><button type="button" class="photo-remove" data-action="remove-photo">✕</button></div>`
-    : '';
-
-  return `
-    <section class="screen">
-      ${renderProgress()}
-      <button type="button" class="back" data-action="back-welcome">← Назад</button>
-      <h2>Регистрация</h2>
-      <p class="lead">Как на оригинальной анкете — укажите контакты.</p>
-      <form class="form" id="regForm">
-        <label class="field"><span>Фамилия *</span>
-          <input name="lastName" required maxlength="80" value="${esc(r.lastName)}" placeholder="Фамилия"></label>
-        <label class="field"><span>Имя *</span>
-          <input name="firstName" required maxlength="80" value="${esc(r.firstName)}" placeholder="Имя"></label>
-        <label class="field"><span>Возраст *</span>
-          <input name="age" type="number" min="18" max="99" required value="${esc(r.age)}" placeholder="Возраст"></label>
-        <label class="field"><span>Телефон *</span>
-          <input name="phone" type="tel" required maxlength="30" value="${esc(r.phone)}" placeholder="+7..."></label>
-        <label class="field"><span>Telegram *</span>
-          <input name="telegram" required maxlength="80" value="${esc(r.telegram)}" placeholder="@username"></label>
-        <div class="field">
-          <span>Фото (рекомендуется)</span>
-          <label class="photo-upload">
-            <input type="file" id="photoInput" accept="image/*" hidden>
-            <span class="photo-upload__btn">📷 Выбрать фото</span>
-          </label>
-          ${photoPreview}
-        </div>
-        <button type="submit" class="btn btn--primary btn--wide">Далее — выбор теста</button>
-      </form>
-    </section>`;
-}
-
 function renderTestType() {
   return `
     <section class="screen">
-      ${renderProgress()}
-      <button type="button" class="back" data-action="back-register">← Назад</button>
-      <h2>Тип анкеты</h2>
-      <p class="lead">Выберите вариант как на бумажном бланке.</p>
+      <p class="eyebrow">Анкета женского либидо</p>
+      <h1>Выберите анкету</h1>
+      <p class="lead">Как на бумажном бланке — обычный цикл или менопауза. Ставьте галочки напротив ответов.</p>
       <div class="grid">
         <button type="button" class="card card--mode" data-test-type="regular">
-          <span class="card__title">Регулярный цикл</span>
-          <span class="card__sub">4 периода — от месячных до овуляции и обратно</span>
+          <span class="card__title">Обычный цикл</span>
+          <span class="card__sub">4 периода: от месячных до овуляции и обратно</span>
         </button>
         <button type="button" class="card card--mode" data-test-type="menopause">
           <span class="card__title">Менопауза</span>
-          <span class="card__sub">Один блок вопросов без привязки к циклу</span>
+          <span class="card__sub">Один блок вопросов</span>
         </button>
       </div>
+      <p class="disclaimer">Результат отправляется специалисту в Telegram.</p>
     </section>`;
 }
 
@@ -151,13 +96,14 @@ function renderPeriod() {
   return `
     <section class="screen screen--sheet">
       ${renderProgress()}
+      <button type="button" class="back" data-action="back-type">← К выбору анкеты</button>
       <p class="eyebrow">${period.short} · ${state.periodIndex + 1} из 4</p>
       <h2>${esc(period.name)}</h2>
       <p class="lead sheet-hint">Поставьте галочку напротив одного ответа в каждом блоке.</p>
       <div class="sheet">${blocks}</div>
       <div class="quiz-nav">
         <button type="button" class="btn btn--ghost" data-action="prev-period" ${state.periodIndex === 0 ? 'disabled' : ''}>Назад</button>
-        <button type="button" class="btn btn--primary" data-action="next-period" ${allAnswered ? '' : 'disabled'} id="nextPeriodBtn">Далее</button>
+        <button type="button" class="btn btn--primary" data-action="next-period" ${allAnswered ? '' : 'disabled'}>Далее</button>
       </div>
     </section>`;
 }
@@ -170,6 +116,7 @@ function renderMenopause() {
   return `
     <section class="screen screen--sheet">
       ${renderProgress()}
+      <button type="button" class="back" data-action="back-type">← К выбору анкеты</button>
       <p class="eyebrow">Менопауза</p>
       <h2>Анкета для менопаузы</h2>
       <p class="lead sheet-hint">Поставьте галочку напротив одного ответа в каждом блоке.</p>
@@ -219,15 +166,13 @@ function renderSeason() {
 
 function answerRowsForPdf() {
   const rows = [];
-  const pushQ = (label, key) => {
-    rows.push({ label, value: state.answers[key] || '—' });
-  };
 
   if (state.test_type === 'regular') {
     for (const p of PERIODS) {
       rows.push({ label: p.name, value: '', isHeader: true });
-      const qs = periodQuestions(p.id);
-      for (const q of qs) rows.push({ label: q.label, value: state.answers[q.key] || '—' });
+      for (const q of periodQuestions(p.id)) {
+        rows.push({ label: q.label, value: state.answers[q.key] || '—' });
+      }
     }
   } else {
     for (const q of menopauseQuestions()) {
@@ -243,8 +188,8 @@ function answerRowsForPdf() {
 }
 
 function renderResult() {
-  const r = state.registration;
   const res = state.result;
+  const typeLabel = state.test_type === 'regular' ? 'Обычный цикл' : 'Менопауза';
   const rows = answerRowsForPdf()
     .map((row) => {
       if (row.isHeader) return `<h4 class="pdf-period">${esc(row.label)}</h4>`;
@@ -257,8 +202,7 @@ function renderResult() {
       <h2>Анкета заполнена</h2>
       <div id="pdfRoot" class="pdf-root">
         <p class="eyebrow">Анкета женского либидо · ${new Date().toLocaleString('ru-RU')}</p>
-        <p><strong>${esc(r.lastName)} ${esc(r.firstName)}</strong>, ${esc(r.age)} лет</p>
-        <p>📱 ${esc(r.phone)} · ${esc(r.telegram)}</p>
+        <p><strong>Тип:</strong> ${typeLabel}</p>
         <p class="score">Баллы: <strong>${res.score}</strong></p>
         <p class="level">${esc(res.level)}</p>
         <p class="hint">${esc(res.desc)}</p>
@@ -277,12 +221,6 @@ function renderResult() {
 function render() {
   const app = $('#app');
   switch (state.step) {
-    case 'welcome':
-      app.innerHTML = renderWelcome();
-      break;
-    case 'register':
-      app.innerHTML = renderRegister();
-      break;
     case 'test_type':
       app.innerHTML = renderTestType();
       break;
@@ -299,7 +237,7 @@ function render() {
       app.innerHTML = renderResult();
       break;
     default:
-      app.innerHTML = renderWelcome();
+      app.innerHTML = renderTestType();
   }
   bindEvents();
   if (state.step === 'result' && !state.telegramSent) {
@@ -316,21 +254,6 @@ function periodAllAnswered() {
 }
 
 function bindEvents() {
-  $('[data-action="start"]')?.addEventListener('click', () => {
-    state.step = 'register';
-    render();
-  });
-
-  $('[data-action="back-welcome"]')?.addEventListener('click', () => {
-    state.step = 'welcome';
-    render();
-  });
-
-  $('[data-action="back-register"]')?.addEventListener('click', () => {
-    state.step = 'register';
-    render();
-  });
-
   $('[data-action="back-type"]')?.addEventListener('click', () => {
     state.step = 'test_type';
     render();
@@ -344,50 +267,13 @@ function bindEvents() {
 
   $('[data-action="restart"]')?.addEventListener('click', () => {
     Object.assign(state, {
-      step: 'welcome',
-      registration: { firstName: '', lastName: '', age: '', phone: '', telegram: '', photo: null, photoName: '' },
+      step: 'test_type',
       test_type: null,
       answers: {},
       periodIndex: 0,
       result: null,
       telegramSent: false,
     });
-    render();
-  });
-
-  const regForm = $('#regForm');
-  if (regForm) {
-    regForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fd = new FormData(regForm);
-      Object.assign(state.registration, {
-        lastName: String(fd.get('lastName') || '').trim(),
-        firstName: String(fd.get('firstName') || '').trim(),
-        age: String(fd.get('age') || '').trim(),
-        phone: String(fd.get('phone') || '').trim(),
-        telegram: String(fd.get('telegram') || '').trim(),
-      });
-      state.step = 'test_type';
-      render();
-      sendRegistration();
-    });
-  }
-
-  $('#photoInput')?.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      state.registration.photo = reader.result;
-      state.registration.photoName = file.name;
-      render();
-    };
-    reader.readAsDataURL(file);
-  });
-
-  $('[data-action="remove-photo"]')?.addEventListener('click', () => {
-    state.registration.photo = null;
-    state.registration.photoName = '';
     render();
   });
 
@@ -468,29 +354,11 @@ function bindEvents() {
 
 function buildPayload() {
   return {
-    type: 'results',
-    registration: state.registration,
     test_type: state.test_type,
     answers: { ...state.answers, test_type: state.test_type },
     result: state.result,
     date: new Date().toISOString(),
   };
-}
-
-async function sendRegistration() {
-  try {
-    await fetch('/api/send-telegram', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'registration',
-        registration: state.registration,
-        date: new Date().toISOString(),
-      }),
-    });
-  } catch {
-    /* тихо — не блокируем анкету */
-  }
 }
 
 async function sendTelegram(silent) {
@@ -529,15 +397,14 @@ async function downloadPdf() {
     const pageH = pdf.internal.pageSize.getHeight();
     const margin = 10;
     const maxW = pageW - margin * 2;
-    let y = margin;
-    let imgH = (canvas.height * maxW) / canvas.width;
+    const y = margin;
+    const imgH = (canvas.height * maxW) / canvas.width;
     if (imgH > pageH - margin * 2) {
       pdf.addImage(img, 'PNG', margin, y, maxW, pageH - margin * 2);
     } else {
       pdf.addImage(img, 'PNG', margin, y, maxW, imgH);
     }
-    const name = `${state.registration.lastName || 'anketa'}_${state.registration.firstName || ''}`.replace(/[^\wа-яА-ЯёЁ-]+/gi, '_');
-    pdf.save(`libido-${name}-${Date.now()}.pdf`);
+    pdf.save(`libido-anketa-${Date.now()}.pdf`);
     if (status) status.textContent = state.telegramSent ? '✓ PDF сохранён' : 'PDF сохранён';
   } catch (e) {
     if (status) status.textContent = 'Ошибка PDF: ' + e.message;
