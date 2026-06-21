@@ -133,11 +133,11 @@ function renderSeason() {
   const showDesc = dep === 'Да';
 
   return `
-    <section class="screen">
+    <section class="screen screen--season">
       ${renderProgress()}
       <button type="button" class="back" data-action="back-from-season">← Назад</button>
       <h2>Зависимость от сезона</h2>
-      <div class="question-block">
+      <div class="question-block question-block--plain">
         <p class="question-label">Есть ли у Вас зависимость либидо от сезона года?</p>
         <div class="check-list">
           ${OPT.season
@@ -154,13 +154,15 @@ function renderSeason() {
       </div>
       ${
         showDesc
-          ? `<label class="field field--top">
+          ? `<label class="field field--season-desc">
           <span>Опишите, как меняется либидо по сезонам</span>
           <textarea id="seasonDesc" rows="4" maxlength="1000" placeholder="Например: весной и летом выше...">${esc(state.answers.season_description || '')}</textarea>
         </label>`
           : ''
       }
-      <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep ? '' : 'disabled'}>Завершить анкету</button>
+      <div class="season-footer">
+        <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep ? '' : 'disabled'}>Завершить анкету</button>
+      </div>
     </section>`;
 }
 
