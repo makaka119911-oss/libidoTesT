@@ -5,55 +5,63 @@ function sanitize(v, max = 500) {
     .replace(/[*_[\]`]/g, '');
 }
 
+const SEASON_LABEL =
+  'Зависит ли Ваше либидо от времени года, если да, то опишите как оно меняется';
+
+function line(label, val) {
+  return `   └ ${label}: ${sanitize(val || 'Не указано', 300)}\n`;
+}
+
 function formatResults(payload) {
   const data = payload.answers || {};
-  const result = payload.result || {};
   const type = payload.test_type || data.test_type;
 
-  let message = '📊 НОВЫЙ РЕЗУЛЬТАТ ТЕСТА 📊\n\n';
-  message += `🔍 Тип теста: ${type === 'regular' ? 'Обычный' : 'Менопауза'}\n`;
-  message += `📈 Результат: ${sanitize(result.level, 120)}\n`;
-  message += `⭐ Баллы: ${result.score ?? '—'}\n\n`;
+  let message = '📋 ТЕСТ АНКЕТА НА ЖЕНСКОЕ ЛИБИДО\n\n';
+  message += `🔍 Бланк: ${type === 'regular' ? 'Обычный цикл' : 'Менопауза'}\n`;
+  if (data.age) message += `🎂 Возраст: ${sanitize(data.age, 10)}\n`;
+  message += '\n';
 
-  const line = (label, val) => `   └ ${label}: ${sanitize(val || 'Не указано', 200)}\n`;
+  const periods = [
+    { name: 'Период-1: От конца месячных до овуляции', prefix: 'period1' },
+    { name: 'Период-2: В период овуляции', prefix: 'period2' },
+    { name: 'Период-3: От конца овуляции до начала месячных', prefix: 'period3' },
+    { name: 'Период-4: В период месячных', prefix: 'period4' },
+  ];
+
+  const block = (prefix) => {
+    let s = '';
+    s += line('Как часто хочется секса', data[`${prefix}_frequency`]);
+    s += line('Сила желания', data[`${prefix}_strength`]);
+    s += line('Эрегир. (хочется)', data[`${prefix}_erected_want`]);
+    s += line('Эрегир. (не хочется)', data[`${prefix}_erected_not_want`]);
+    s += line('Не эрегир. (хочется)', data[`${prefix}_non_erected_want`]);
+    s += line('Не эрегир. (не хочется)', data[`${prefix}_non_erected_not_want`]);
+    s += line('Фантазии', data[`${prefix}_fantasy`]);
+    s += line('Минет', data[`${prefix}_oral`]);
+    return s;
+  };
 
   if (type === 'regular') {
-    message += '📅 Ответы по периодам:\n';
-    const periods = [
-      { name: 'От конца месячных до овуляции', prefix: 'period1' },
-      { name: 'В период овуляции', prefix: 'period2' },
-      { name: 'От конца овуляции до начала месячных', prefix: 'period3' },
-      { name: 'В период месячных', prefix: 'period4' },
-    ];
     for (const p of periods) {
-      message += `\n${p.name}:\n`;
-      message += line('Частота', data[`${p.prefix}_frequency`]);
-      message += line('Сила желания', data[`${p.prefix}_strength`]);
-      message += line('Эрегир. (да)', data[`${p.prefix}_erected_want`]);
-      message += line('Эрегир. (нет)', data[`${p.prefix}_erected_not_want`]);
-      message += line('Не эрегир. (да)', data[`${p.prefix}_non_erected_want`]);
-      message += line('Не эрегир. (нет)', data[`${p.prefix}_non_erected_not_want`]);
-      message += line('Фантазии', data[`${p.prefix}_fantasy`]);
-      message += line('Минет', data[`${p.prefix}_oral`]);
+      message += `\n${p.name}:\n${block(p.prefix)}`;
     }
   } else {
-    message += '🔸 Ответы для менопаузы:\n';
-    message += line('Частота', data.menopause_frequency);
+    message += 'Менопауза:\n';
+    message += line('Как часто хочется секса', data.menopause_frequency);
     message += line('Сила желания', data.menopause_strength);
-    message += line('Эрегир. (да)', data.menopause_erected_want);
-    message += line('Эрегир. (нет)', data.menopause_erected_not_want);
-    message += line('Не эрегир. (да)', data.menopause_non_erected_want);
-    message += line('Не эрегир. (нет)', data.menopause_non_erected_not_want);
+    message += line('Эрегир. (хочется)', data.menopause_erected_want);
+    message += line('Эрегир. (не хочется)', data.menopause_erected_not_want);
+    message += line('Не эрегир. (хочется)', data.menopause_non_erected_want);
+    message += line('Не эрегир. (не хочется)', data.menopause_non_erected_not_want);
     message += line('Фантазии', data.menopause_fantasy);
     message += line('Минет', data.menopause_oral);
   }
 
-  message += `\n🍂 Сезонная зависимость: ${sanitize(data.season_dependency || 'Не указано', 20)}\n`;
-  if (data.season_description) {
-    message += `   └ Описание: ${sanitize(data.season_description, 500)}\n`;
-  }
+  message += `\n🍂 ${SEASON_LABEL}\n`;
+  message += line('Ответ', data.season_dependency);
+  if (data.season_description) message += line('Описание', data.season_description);
 
-  message += `\n⏰ Дата заполнения: ${new Date(payload.date || Date.now()).toLocaleString('ru-RU')}`;
+  message += `\n⏰ ${new Date(payload.date || Date.now()).toLocaleString('ru-RU')}`;
   return message.slice(0, 4000);
 }
 

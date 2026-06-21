@@ -228,10 +228,23 @@ body {
 .question-block:last-child { border-bottom: none; }
 
 .question-label {
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   font-size: 0.92rem;
   font-weight: 600;
   line-height: 1.35;
+}
+
+.question-sub {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.sheet-title {
+  font-size: 1rem;
+  margin: 0 0 12px;
+  color: var(--accent-dark);
 }
 
 .check-list { display: grid; gap: 0; }
