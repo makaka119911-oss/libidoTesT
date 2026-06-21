@@ -1,11 +1,9 @@
 import {
   PERIODS,
   OPT,
-  SEASON_LABEL,
-  periodQuestionsSheet1,
-  periodQuestionsSheet2,
-  menopauseQuestionsSheet1,
-  menopauseQuestionsSheet2,
+  periodQuestions,
+  menopauseQuestions,
+  calculateResult,
 } from './data.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -14,9 +12,9 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const state = {
   step: 'test_type',
   test_type: null,
-  sheet: 1,
-  periodIndex: 0,
   answers: {},
+  periodIndex: 0,
+  result: null,
   telegramSent: false,
 };
 
@@ -28,24 +26,19 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
-function currentQuestions() {
-  if (state.test_type === 'regular') {
-    return state.sheet === 1
-      ? periodQuestionsSheet1(PERIODS[state.periodIndex].id)
-      : periodQuestionsSheet2(PERIODS[state.periodIndex].id);
-  }
-  return state.sheet === 1 ? menopauseQuestionsSheet1() : menopauseQuestionsSheet2();
+function stepsForType(type) {
+  if (type === 'regular') return ['test_type', 'period', 'season', 'result'];
+  return ['test_type', 'menopause', 'season', 'result'];
 }
 
 function progressPct() {
   if (!state.test_type) return 0;
-  let total = state.test_type === 'regular' ? 10 : 3; // 4+4 periods + season, or 2 sheets + season
-  let done = 0;
-  if (state.step === 'sheet') {
-    done = state.test_type === 'regular' ? (state.sheet - 1) * 4 + state.periodIndex : state.sheet - 1;
-  } else if (state.step === 'season_age') done = total - 1;
-  else if (state.step === 'result') done = total;
-  return Math.min(100, Math.round((done / total) * 100));
+  const steps = stepsForType(state.test_type);
+  const idx = Math.max(0, steps.indexOf(state.step === 'period' ? 'period' : state.step));
+  const periodExtra = state.test_type === 'regular' && state.step === 'period' ? state.periodIndex / 4 : 0;
+  const base = idx / (steps.length - 1);
+  const periodPart = state.step === 'period' ? periodExtra * (1 / (steps.length - 1)) : 0;
+  return Math.min(100, Math.round((base + periodPart) * 100));
 }
 
 function renderCheckList(question) {
@@ -54,7 +47,7 @@ function renderCheckList(question) {
     .map(
       (opt, i) => `
     <label class="check-row ${selected === opt ? 'check-row--on' : ''}" data-key="${question.key}" data-index="${i}">
-      <input type="radio" name="${question.key}" value="${esc(opt)}" hidden>
+      <input type="radio" name="${question.key}" value="${esc(opt)}" ${selected === opt ? 'checked' : ''} hidden>
       <span class="check-box" aria-hidden="true">${selected === opt ? '✓' : ''}</span>
       <span class="check-text">${esc(opt)}</span>
     </label>`
@@ -63,11 +56,9 @@ function renderCheckList(question) {
 }
 
 function renderQuestionBlock(q) {
-  const sub = q.sub ? `<p class="question-sub">${esc(q.sub)}</p>` : '';
   return `
     <div class="question-block" data-qkey="${q.key}">
       <p class="question-label">${esc(q.label)}</p>
-      ${sub}
       <div class="check-list">${renderCheckList(q)}</div>
     </div>`;
 }
@@ -79,50 +70,65 @@ function renderProgress() {
 function renderTestType() {
   return `
     <section class="screen">
-      <p class="eyebrow">ТЕСТ АНКЕТА НА ЖЕНСКОЕ ЛИБИДО</p>
-      <h1>Выберите бланк</h1>
+      <p class="eyebrow">Анкета женского либидо</p>
+      <h1>Выберите анкету</h1>
+      <p class="lead">Как на бумажном бланке — обычный цикл или менопауза. Ставьте галочки напротив ответов.</p>
       <div class="grid">
         <button type="button" class="card card--mode" data-test-type="regular">
           <span class="card__title">Обычный цикл</span>
-          <span class="card__sub">4 периода — как на бланке с таблицей</span>
+          <span class="card__sub">4 периода: от месячных до овуляции и обратно</span>
         </button>
         <button type="button" class="card card--mode" data-test-type="menopause">
           <span class="card__title">Менопауза</span>
-          <span class="card__sub">Бланк «Менопауза»</span>
+          <span class="card__sub">Один блок вопросов</span>
         </button>
       </div>
+      <p class="disclaimer">Результат отправляется специалисту в Telegram.</p>
     </section>`;
 }
 
-function sheetTitle() {
-  if (state.test_type === 'menopause') {
-    return state.sheet === 1 ? 'Менопауза · лист 1' : 'Менопауза · лист 2';
-  }
+function renderPeriod() {
   const period = PERIODS[state.periodIndex];
-  return `${period.name} · лист ${state.sheet}`;
-}
-
-function renderSheet() {
-  const questions = currentQuestions();
+  const questions = periodQuestions(period.id);
   const blocks = questions.map(renderQuestionBlock).join('');
   const allAnswered = questions.every((q) => state.answers[q.key]);
-  const isRegular = state.test_type === 'regular';
-  const backLabel = state.periodIndex === 0 && state.sheet === 1 ? '← К выбору бланка' : '← Назад';
 
   return `
     <section class="screen screen--sheet">
       ${renderProgress()}
-      <button type="button" class="back" data-action="back">${backLabel}</button>
-      <p class="eyebrow">${sheetTitle()}${isRegular ? ` · ${state.periodIndex + 1}/4` : ''}</p>
-      <h2 class="sheet-title">${state.test_type === 'menopause' && state.sheet === 1 ? 'Менопауза' : isRegular ? PERIODS[state.periodIndex].name : ''}</h2>
+      <button type="button" class="back" data-action="back-type">← К выбору анкеты</button>
+      <p class="eyebrow">${period.short} · ${state.periodIndex + 1} из 4</p>
+      <h2>${esc(period.name)}</h2>
+      <p class="lead sheet-hint">Поставьте галочку напротив одного ответа в каждом блоке.</p>
       <div class="sheet">${blocks}</div>
       <div class="quiz-nav">
-        <button type="button" class="btn btn--primary" data-action="next-sheet" ${allAnswered ? '' : 'disabled'}>Далее</button>
+        <button type="button" class="btn btn--ghost" data-action="prev-period" ${state.periodIndex === 0 ? 'disabled' : ''}>Назад</button>
+        <button type="button" class="btn btn--primary" data-action="next-period" ${allAnswered ? '' : 'disabled'}>Далее</button>
       </div>
     </section>`;
 }
 
-function renderSeasonAge() {
+function renderMenopause() {
+  const questions = menopauseQuestions();
+  const blocks = questions.map(renderQuestionBlock).join('');
+  const allAnswered = questions.every((q) => state.answers[q.key]);
+
+  return `
+    <section class="screen screen--sheet">
+      ${renderProgress()}
+      <button type="button" class="back" data-action="back-type">← К выбору анкеты</button>
+      <p class="eyebrow">Менопауза</p>
+      <h2>Анкета для менопаузы</h2>
+      <p class="lead sheet-hint">Поставьте галочку напротив одного ответа в каждом блоке.</p>
+      <div class="sheet">${blocks}</div>
+      <div class="quiz-nav">
+        <button type="button" class="btn btn--ghost" data-action="back-type">Назад</button>
+        <button type="button" class="btn btn--primary" data-action="next-menopause" ${allAnswered ? '' : 'disabled'}>Далее</button>
+      </div>
+    </section>`;
+}
+
+function renderSeason() {
   const dep = state.answers.season_dependency;
   const showDesc = dep === 'Да';
 
@@ -130,14 +136,15 @@ function renderSeasonAge() {
     <section class="screen">
       ${renderProgress()}
       <button type="button" class="back" data-action="back-from-season">← Назад</button>
+      <h2>Зависимость от сезона</h2>
       <div class="question-block">
-        <p class="question-label">${esc(SEASON_LABEL)}</p>
+        <p class="question-label">Есть ли у Вас зависимость либидо от сезона года?</p>
         <div class="check-list">
           ${OPT.season
             .map(
               (opt) => `
             <label class="check-row ${dep === opt ? 'check-row--on' : ''}" data-key="season_dependency" data-index="${OPT.season.indexOf(opt)}">
-              <input type="radio" name="season_dependency" value="${opt}" hidden>
+              <input type="radio" name="season_dependency" value="${opt}" ${dep === opt ? 'checked' : ''} hidden>
               <span class="check-box">${dep === opt ? '✓' : ''}</span>
               <span class="check-text">${opt}</span>
             </label>`
@@ -149,50 +156,41 @@ function renderSeasonAge() {
         showDesc
           ? `<label class="field field--top">
           <span>Опишите, как меняется либидо по сезонам</span>
-          <textarea id="seasonDesc" rows="4" maxlength="1000">${esc(state.answers.season_description || '')}</textarea>
+          <textarea id="seasonDesc" rows="4" maxlength="1000" placeholder="Например: весной и летом выше...">${esc(state.answers.season_description || '')}</textarea>
         </label>`
           : ''
       }
-      <label class="field field--top">
-        <span>Ваш возраст</span>
-        <input type="number" id="ageInput" min="18" max="99" maxlength="3" placeholder="Возраст" value="${esc(state.answers.age || '')}">
-      </label>
-      <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep && state.answers.age ? '' : 'disabled'}>Завершить анкету</button>
+      <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep ? '' : 'disabled'}>Завершить анкету</button>
     </section>`;
 }
 
-function collectPdfRows() {
+function answerRowsForPdf() {
   const rows = [];
-  const pushQs = (questions) => {
-    for (const q of questions) {
-      const label = q.sub ? `${q.label} — ${q.sub}` : q.label;
-      rows.push({ label, value: state.answers[q.key] || '—' });
-    }
-  };
 
   if (state.test_type === 'regular') {
     for (const p of PERIODS) {
-      rows.push({ label: p.name, isHeader: true });
-      pushQs(periodQuestionsSheet1(p.id));
-      pushQs(periodQuestionsSheet2(p.id));
+      rows.push({ label: p.name, value: '', isHeader: true });
+      for (const q of periodQuestions(p.id)) {
+        rows.push({ label: q.label, value: state.answers[q.key] || '—' });
+      }
     }
   } else {
-    rows.push({ label: 'Менопауза', isHeader: true });
-    pushQs(menopauseQuestionsSheet1());
-    pushQs(menopauseQuestionsSheet2());
+    for (const q of menopauseQuestions()) {
+      rows.push({ label: q.label, value: state.answers[q.key] || '—' });
+    }
   }
 
-  rows.push({ label: SEASON_LABEL, value: state.answers.season_dependency || '—' });
+  rows.push({ label: 'Зависимость от сезона', value: state.answers.season_dependency || '—' });
   if (state.answers.season_description) {
-    rows.push({ label: 'Описание', value: state.answers.season_description });
+    rows.push({ label: 'Описание сезона', value: state.answers.season_description });
   }
-  rows.push({ label: 'Ваш возраст', value: state.answers.age || '—' });
   return rows;
 }
 
 function renderResult() {
+  const res = state.result;
   const typeLabel = state.test_type === 'regular' ? 'Обычный цикл' : 'Менопауза';
-  const rows = collectPdfRows()
+  const rows = answerRowsForPdf()
     .map((row) => {
       if (row.isHeader) return `<h4 class="pdf-period">${esc(row.label)}</h4>`;
       return `<div class="pdf-row"><span class="pdf-q">${esc(row.label)}</span><span class="pdf-a">${esc(row.value)}</span></div>`;
@@ -203,8 +201,11 @@ function renderResult() {
     <section class="screen">
       <h2>Анкета заполнена</h2>
       <div id="pdfRoot" class="pdf-root">
-        <p class="eyebrow">ТЕСТ АНКЕТА НА ЖЕНСКОЕ ЛИБИДО · ${new Date().toLocaleString('ru-RU')}</p>
-        <p><strong>Бланк:</strong> ${typeLabel}</p>
+        <p class="eyebrow">Анкета женского либидо · ${new Date().toLocaleString('ru-RU')}</p>
+        <p><strong>Тип:</strong> ${typeLabel}</p>
+        <p class="score">Баллы: <strong>${res.score}</strong></p>
+        <p class="level">${esc(res.level)}</p>
+        <p class="hint">${esc(res.desc)}</p>
         <hr class="pdf-hr">
         ${rows}
       </div>
@@ -223,11 +224,14 @@ function render() {
     case 'test_type':
       app.innerHTML = renderTestType();
       break;
-    case 'sheet':
-      app.innerHTML = renderSheet();
+    case 'period':
+      app.innerHTML = renderPeriod();
       break;
-    case 'season_age':
-      app.innerHTML = renderSeasonAge();
+    case 'menopause':
+      app.innerHTML = renderMenopause();
+      break;
+    case 'season':
+      app.innerHTML = renderSeason();
       break;
     case 'result':
       app.innerHTML = renderResult();
@@ -236,49 +240,27 @@ function render() {
       app.innerHTML = renderTestType();
   }
   bindEvents();
-  if (state.step === 'result' && !state.telegramSent) sendTelegram(true);
+  if (state.step === 'result' && !state.telegramSent) {
+    sendTelegram(true);
+  }
 }
 
-function optionsForKey(key) {
-  if (key === 'season_dependency') return OPT.season;
-  const all = [];
-  if (state.test_type === 'regular') {
-    for (const p of PERIODS) {
-      all.push(...periodQuestionsSheet1(p.id), ...periodQuestionsSheet2(p.id));
-    }
-  } else {
-    all.push(...menopauseQuestionsSheet1(), ...menopauseQuestionsSheet2());
-  }
-  const q = all.find((x) => x.key === key);
-  return q?.options || OPT.season;
+function setAnswer(key, value) {
+  state.answers[key] = value;
+}
+
+function periodAllAnswered() {
+  return periodQuestions(PERIODS[state.periodIndex].id).every((q) => state.answers[q.key]);
 }
 
 function bindEvents() {
-  $('[data-action="back-type"]')?.addEventListener('click', () => goTestType());
-
-  $('[data-action="back"]')?.addEventListener('click', () => {
-      if (state.test_type === 'regular') {
-        if (state.periodIndex > 0) {
-          state.periodIndex -= 1;
-        } else if (state.sheet === 2) {
-          state.sheet = 1;
-          state.periodIndex = 3;
-        } else {
-          goTestType();
-          return;
-        }
-      } else if (state.sheet === 2) {
-        state.sheet = 1;
-      } else {
-        goTestType();
-        return;
-      }
-      render();
-    });
+  $('[data-action="back-type"]')?.addEventListener('click', () => {
+    state.step = 'test_type';
+    render();
+  });
 
   $('[data-action="back-from-season"]')?.addEventListener('click', () => {
-    state.step = 'sheet';
-    state.sheet = state.test_type === 'regular' ? 2 : 2;
+    state.step = state.test_type === 'regular' ? 'period' : 'menopause';
     if (state.test_type === 'regular') state.periodIndex = 3;
     render();
   });
@@ -287,9 +269,9 @@ function bindEvents() {
     Object.assign(state, {
       step: 'test_type',
       test_type: null,
-      sheet: 1,
-      periodIndex: 0,
       answers: {},
+      periodIndex: 0,
+      result: null,
       telegramSent: false,
     });
     render();
@@ -299,9 +281,8 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       state.test_type = btn.dataset.testType;
       state.answers = { test_type: state.test_type };
-      state.sheet = 1;
       state.periodIndex = 0;
-      state.step = 'sheet';
+      state.step = state.test_type === 'regular' ? 'period' : 'menopause';
       render();
     });
   });
@@ -310,10 +291,21 @@ function bindEvents() {
     row.addEventListener('click', () => {
       const key = row.dataset.key;
       const idx = Number(row.dataset.index);
-      const value = optionsForKey(key)[idx];
+      let options = OPT.season;
+      if (key.startsWith('period')) {
+        const periodId = Number(key.match(/period(\d)/)?.[1]);
+        const q = periodQuestions(periodId).find((x) => x.key === key);
+        options = q?.options || options;
+      } else if (key.startsWith('menopause')) {
+        const q = menopauseQuestions().find((x) => x.key === key);
+        options = q?.options || options;
+      }
+      const value = options[idx];
       if (!value) return;
-      state.answers[key] = value;
-      if (key === 'season_dependency' && value === 'Нет') delete state.answers.season_description;
+      setAnswer(key, value);
+      if (key === 'season_dependency' && value === 'Нет') {
+        delete state.answers.season_description;
+      }
       render();
     });
   });
@@ -322,36 +314,36 @@ function bindEvents() {
     state.answers.season_description = e.target.value;
   });
 
-  $('#ageInput')?.addEventListener('input', (e) => {
-    state.answers.age = String(e.target.value || '').trim();
-    const btn = $('[data-action="finish"]');
-    if (btn) btn.disabled = !(state.answers.season_dependency && state.answers.age);
+  $('[data-action="prev-period"]')?.addEventListener('click', () => {
+    if (state.periodIndex > 0) {
+      state.periodIndex -= 1;
+      render();
+    }
   });
 
-  $('[data-action="next-sheet"]')?.addEventListener('click', () => {
-    const qs = currentQuestions();
-    if (!qs.every((q) => state.answers[q.key])) return;
-
-    if (state.test_type === 'regular') {
-      if (state.periodIndex < 3) {
-        state.periodIndex += 1;
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else if (state.sheet === 1) {
-        state.sheet = 2;
-        state.periodIndex = 0;
-      } else {
-        state.step = 'season_age';
-      }
-    } else if (state.sheet === 1) {
-      state.sheet = 2;
+  $('[data-action="next-period"]')?.addEventListener('click', () => {
+    if (!periodAllAnswered()) return;
+    if (state.periodIndex < 3) {
+      state.periodIndex += 1;
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      state.step = 'season_age';
+      state.step = 'season';
+      render();
     }
+  });
+
+  $('[data-action="next-menopause"]')?.addEventListener('click', () => {
+    const ok = menopauseQuestions().every((q) => state.answers[q.key]);
+    if (!ok) return;
+    state.step = 'season';
     render();
   });
 
   $('[data-action="finish"]')?.addEventListener('click', () => {
-    if (!state.answers.season_dependency || !state.answers.age) return;
+    if (!state.answers.season_dependency) return;
+    const data = { ...state.answers, test_type: state.test_type };
+    state.result = calculateResult(data);
     state.step = 'result';
     render();
   });
@@ -360,19 +352,11 @@ function bindEvents() {
   $('#btnTelegram')?.addEventListener('click', () => sendTelegram(false));
 }
 
-function goTestType() {
-  state.step = 'test_type';
-  state.test_type = null;
-  state.sheet = 1;
-  state.periodIndex = 0;
-  state.answers = {};
-  render();
-}
-
 function buildPayload() {
   return {
     test_type: state.test_type,
     answers: { ...state.answers, test_type: state.test_type },
+    result: state.result,
     date: new Date().toISOString(),
   };
 }
@@ -391,7 +375,9 @@ async function sendTelegram(silent) {
     state.telegramSent = true;
     if (status) status.textContent = '✓ Отправлено в Telegram';
   } catch (e) {
-    if (!silent && status) status.textContent = 'Telegram: ' + e.message;
+    if (!silent && status) {
+      status.textContent = 'Telegram: ' + e.message + ' (настрой TELEGRAM_* на Vercel)';
+    }
   }
 }
 
@@ -408,10 +394,16 @@ async function downloadPdf() {
     const img = canvas.toDataURL('image/png');
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
     const margin = 10;
     const maxW = pageW - margin * 2;
+    const y = margin;
     const imgH = (canvas.height * maxW) / canvas.width;
-    pdf.addImage(img, 'PNG', margin, margin, maxW, imgH);
+    if (imgH > pageH - margin * 2) {
+      pdf.addImage(img, 'PNG', margin, y, maxW, pageH - margin * 2);
+    } else {
+      pdf.addImage(img, 'PNG', margin, y, maxW, imgH);
+    }
     pdf.save(`libido-anketa-${Date.now()}.pdf`);
     if (status) status.textContent = state.telegramSent ? '✓ PDF сохранён' : 'PDF сохранён';
   } catch (e) {
