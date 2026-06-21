@@ -28,10 +28,92 @@ body {
 .bg {
   position: fixed;
   inset: 0;
+  overflow: hidden;
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(139, 90, 107, 0.1), transparent),
+    radial-gradient(ellipse 90% 60% at 50% -5%, rgba(139, 90, 107, 0.11), transparent),
+    radial-gradient(ellipse 50% 40% at 100% 80%, rgba(168, 130, 140, 0.08), transparent),
+    radial-gradient(ellipse 45% 35% at 0% 70%, rgba(139, 90, 107, 0.07), transparent),
     var(--bg);
   z-index: -1;
+}
+
+.bg-flower,
+.bg-leaf {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+}
+
+.bg-flower {
+  color: var(--accent);
+  opacity: 0.13;
+}
+
+.bg-leaf {
+  color: #9aab8f;
+  opacity: 0.12;
+}
+
+.bg-flower--1 {
+  width: clamp(140px, 38vw, 220px);
+  top: 6%;
+  right: -4%;
+  transform: rotate(18deg);
+  animation: float-flower 14s ease-in-out infinite;
+}
+
+.bg-flower--2 {
+  width: clamp(100px, 28vw, 160px);
+  bottom: 12%;
+  left: -6%;
+  transform: rotate(-24deg);
+  opacity: 0.1;
+  animation: float-flower 18s ease-in-out infinite reverse;
+}
+
+.bg-flower--3 {
+  width: clamp(70px, 20vw, 110px);
+  top: 42%;
+  right: 8%;
+  transform: rotate(8deg);
+  opacity: 0.08;
+  animation: float-flower 20s ease-in-out infinite 2s;
+}
+
+.bg-leaf--1 {
+  width: clamp(50px, 14vw, 80px);
+  bottom: 28%;
+  right: 6%;
+  transform: rotate(35deg);
+}
+
+.bg-leaf--2 {
+  width: clamp(40px, 12vw, 65px);
+  top: 18%;
+  left: 4%;
+  transform: rotate(-50deg) scaleX(-1);
+  opacity: 0.1;
+}
+
+@keyframes float-flower {
+  0%, 100% { transform: rotate(18deg) translateY(0); }
+  50% { transform: rotate(22deg) translateY(-8px); }
+}
+
+.bg-flower--2 { animation-name: float-flower-2; }
+@keyframes float-flower-2 {
+  0%, 100% { transform: rotate(-24deg) translateY(0); }
+  50% { transform: rotate(-20deg) translateY(6px); }
+}
+
+.bg-flower--3 { animation-name: float-flower-3; }
+@keyframes float-flower-3 {
+  0%, 100% { transform: rotate(8deg) translateY(0); }
+  50% { transform: rotate(12deg) translateY(-5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-flower { animation: none; }
 }
 
 .top {
@@ -40,7 +122,7 @@ body {
   z-index: 10;
   padding: 12px 20px;
   padding-top: max(12px, env(safe-area-inset-top));
-  background: rgba(250, 248, 246, 0.92);
+  background: rgba(250, 248, 246, 0.88);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
@@ -94,7 +176,8 @@ body {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 16px 14px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(4px);
   box-shadow: var(--shadow);
   cursor: pointer;
   transition: border-color 0.15s, transform 0.12s;
@@ -213,7 +296,8 @@ body {
 
 /* —— Бланк с галочками как на бумаге —— */
 .sheet {
-  background: var(--paper);
+  background: rgba(255, 254, 249, 0.96);
+  backdrop-filter: blur(4px);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 4px 0;
@@ -297,7 +381,8 @@ body {
 .quiz-nav .btn--primary { flex: 1; }
 
 .pdf-root {
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(4px);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 14px;
