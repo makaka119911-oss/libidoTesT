@@ -9,8 +9,10 @@ import {
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+const PLATFORM_URL = 'https://zhenskiy-mir.139-100-237-242.sslip.io/';
+
 const state = {
-  step: 'test_type',
+  step: 'age',
   test_type: null,
   answers: {},
   periodIndex: 0,
@@ -27,8 +29,9 @@ function esc(s) {
 }
 
 function stepsForType(type) {
-  if (type === 'regular') return ['test_type', 'period', 'season', 'result'];
-  return ['test_type', 'menopause', 'season', 'result'];
+  if (type === 'regular') return ['age', 'test_type', 'period', 'season', 'result'];
+  if (type === 'menopause') return ['age', 'test_type', 'menopause', 'season', 'result'];
+  return ['age', 'test_type'];
 }
 
 function progressPct() {
@@ -65,6 +68,28 @@ function renderQuestionBlock(q) {
 
 function renderProgress() {
   return `<div class="progress" aria-hidden="true"><div class="progress__bar" style="width:${progressPct()}%"></div></div>`;
+}
+
+function renderAge() {
+  return `
+    <section class="screen">
+      <p class="eyebrow">18+</p>
+      <h1>Перед началом</h1>
+      <p class="lead">Этот тест содержит вопросы об интимной жизни и предназначен для лиц 18+.</p>
+      <div class="age-actions">
+        <button type="button" class="btn btn--primary btn--wide" data-action="age-yes">Мне есть 18, продолжить</button>
+        <button type="button" class="btn btn--ghost btn--wide" data-action="age-no">Мне ещё нет 18</button>
+      </div>
+    </section>`;
+}
+
+function renderUnderage() {
+  return `
+    <section class="screen">
+      <p class="eyebrow">18+</p>
+      <h1>Тест недоступен</h1>
+      <p class="lead">Эта анкета только для совершеннолетних. Берегите себя — можно вернуться позже, когда будет можно.</p>
+    </section>`;
 }
 
 function renderTestType() {
@@ -203,11 +228,16 @@ function renderResult() {
     <section class="screen">
       <h2>Анкета заполнена</h2>
       <div id="pdfRoot" class="pdf-root">
-        <p class="eyebrow">Анкета женского либидо · ${new Date().toLocaleString('ru-RU')}</p>
+        <div class="pdf-brand">
+          <strong>Анкета женского либидо</strong>
+          <span>Женский мир</span>
+        </div>
+        <p class="eyebrow">Результат · ${new Date().toLocaleString('ru-RU')}</p>
         <p><strong>Тип:</strong> ${typeLabel}</p>
-        <p class="score">Баллы: <strong>${res.score}</strong></p>
+        <p class="score">Баллы: <strong>${res.score}${res.maxScore ? ` из ${res.maxScore}` : ''}</strong></p>
         <p class="level">${esc(res.level)}</p>
         <p class="hint">${esc(res.desc)}</p>
+        ${res.advice ? `<p class="advice">${esc(res.advice)}</p>` : ''}
         <hr class="pdf-hr">
         ${rows}
       </div>
@@ -217,12 +247,22 @@ function renderResult() {
         <button type="button" class="btn btn--ghost" data-action="restart">Новая анкета</button>
       </div>
       <p id="status" class="status" role="status">${state.telegramSent ? '✓ Отправлено в Telegram' : ''}</p>
+      <aside class="platform-note">
+        <p>Исследование продолжается в «Женском мире»</p>
+        <a href="${PLATFORM_URL}" target="_blank" rel="noopener noreferrer">Открыть платформу</a>
+      </aside>
     </section>`;
 }
 
 function render() {
   const app = $('#app');
   switch (state.step) {
+    case 'age':
+      app.innerHTML = renderAge();
+      break;
+    case 'underage':
+      app.innerHTML = renderUnderage();
+      break;
     case 'test_type':
       app.innerHTML = renderTestType();
       break;
@@ -239,7 +279,7 @@ function render() {
       app.innerHTML = renderResult();
       break;
     default:
-      app.innerHTML = renderTestType();
+      app.innerHTML = renderAge();
   }
   bindEvents();
   if (state.step === 'result' && !state.telegramSent) {
@@ -256,6 +296,16 @@ function periodAllAnswered() {
 }
 
 function bindEvents() {
+  $('[data-action="age-yes"]')?.addEventListener('click', () => {
+    state.step = 'test_type';
+    render();
+  });
+
+  $('[data-action="age-no"]')?.addEventListener('click', () => {
+    state.step = 'underage';
+    render();
+  });
+
   $('[data-action="back-type"]')?.addEventListener('click', () => {
     state.step = 'test_type';
     render();
@@ -269,7 +319,7 @@ function bindEvents() {
 
   $('[data-action="restart"]')?.addEventListener('click', () => {
     Object.assign(state, {
-      step: 'test_type',
+      step: 'age',
       test_type: null,
       answers: {},
       periodIndex: 0,
@@ -392,21 +442,27 @@ async function downloadPdf() {
       import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm'),
       import('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/+esm'),
     ]);
-    const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#fff', logging: false });
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', logging: false });
     const img = canvas.toDataURL('image/png');
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 10;
+    const margin = 12;
     const maxW = pageW - margin * 2;
-    const y = margin;
     const imgH = (canvas.height * maxW) / canvas.width;
-    if (imgH > pageH - margin * 2) {
-      pdf.addImage(img, 'PNG', margin, y, maxW, pageH - margin * 2);
-    } else {
-      pdf.addImage(img, 'PNG', margin, y, maxW, imgH);
+    const pageDrawH = pageH - margin * 2;
+    let heightLeft = imgH;
+    let position = margin;
+
+    pdf.addImage(img, 'PNG', margin, position, maxW, imgH);
+    heightLeft -= pageDrawH;
+    while (heightLeft > 0) {
+      position = margin - (imgH - heightLeft);
+      pdf.addPage();
+      pdf.addImage(img, 'PNG', margin, position, maxW, imgH);
+      heightLeft -= pageDrawH;
     }
-    pdf.save(`libido-anketa-${Date.now()}.pdf`);
+    pdf.save(`anketa-zhenskogo-libido-${Date.now()}.pdf`);
     if (status) status.textContent = state.telegramSent ? '✓ PDF сохранён' : 'PDF сохранён';
   } catch (e) {
     if (status) status.textContent = 'Ошибка PDF: ' + e.message;
