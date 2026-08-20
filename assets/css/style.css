@@ -562,6 +562,10 @@ body {
   margin: 8px 0 0;
 }
 
+.blessing--loading .blessing__text {
+  opacity: 0.72;
+}
+
 .blessing {
   margin: 16px 0 4px;
   padding: 14px 14px 12px;

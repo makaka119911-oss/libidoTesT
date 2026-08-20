@@ -19,6 +19,8 @@ const state = {
   answers: {},
   periodIndex: 0,
   result: null,
+  /** @type {{ text: string, final: string, band: string, source: string, loading?: boolean } | null} */
+  aiBlessing: null,
   telegramSent: false,
   consentPd: false,
   contact: {
@@ -260,10 +262,18 @@ function renderConsentPanel() {
     </div>`;
 }
 
+function activeBlessing() {
+  if (state.aiBlessing?.text) return state.aiBlessing;
+  const fb = blessingForLevel(state.result?.level);
+  return { ...fb, source: 'fallback', loading: false };
+}
+
 function renderResult() {
   const res = state.result;
   const typeLabel = state.test_type === 'regular' ? 'Обычный цикл' : 'Менопауза';
-  const blessing = blessingForLevel(res?.level);
+  const blessing = activeBlessing();
+  const loading = Boolean(blessing.loading);
+  const eyebrow = loading ? 'Готовим напутствие…' : 'Напутствие для вас';
   const rows = answerRowsForPdf()
     .map((row) => {
       if (row.isHeader) return `<h4 class="pdf-period">${esc(row.label)}</h4>`;
@@ -287,8 +297,8 @@ function renderResult() {
         <p class="level">${esc(res.level)}</p>
         <p class="hint">${esc(res.desc)}</p>
         ${res.advice ? `<p class="advice">${esc(res.advice)}</p>` : ''}
-        <aside class="blessing" aria-label="Напутствие">
-          <p class="blessing__eyebrow">Напутствие для вас</p>
+        <aside class="blessing ${loading ? 'blessing--loading' : ''}" aria-label="Напутствие" aria-busy="${loading}">
+          <p class="blessing__eyebrow">${esc(eyebrow)}</p>
           <p class="blessing__text">${esc(blessing.text)}</p>
           <p class="blessing__final">${esc(blessing.final)}</p>
         </aside>
@@ -385,6 +395,7 @@ function bindEvents() {
       answers: {},
       periodIndex: 0,
       result: null,
+      aiBlessing: null,
       telegramSent: false,
       consentPd: false,
       contact: { name: '', phone: '', email: '', allowContact: false },
@@ -459,8 +470,11 @@ function bindEvents() {
     if (!state.answers.season_dependency) return;
     const data = { ...state.answers, test_type: state.test_type };
     state.result = calculateResult(data);
+    const fb = blessingForLevel(state.result?.level);
+    state.aiBlessing = { ...fb, source: 'fallback', loading: true };
     state.step = 'result';
     render();
+    void fetchAiBlessing();
   });
 
   $('[data-action="toggle-pd-consent"]')?.addEventListener('click', (e) => {
@@ -491,7 +505,7 @@ function bindEvents() {
 }
 
 function buildPayload() {
-  const blessing = blessingForLevel(state.result?.level);
+  const blessing = activeBlessing();
   return {
     test_type: state.test_type,
     answers: { ...state.answers, test_type: state.test_type },
@@ -500,6 +514,7 @@ function buildPayload() {
       blessing_band: blessing.band,
       blessing: blessing.text,
       blessing_final: blessing.final,
+      blessing_source: blessing.source === 'deepseek' ? 'deepseek' : 'fallback',
     },
     date: new Date().toISOString(),
     consent: {
@@ -513,6 +528,62 @@ function buildPayload() {
       email: state.contact.email || '',
     },
   };
+}
+
+/**
+ * Подтягивает персональное напутствие с API (DeepSeek).
+ * При ошибке/офлайне остаётся статичный текст по уровню.
+ */
+async function fetchAiBlessing() {
+  const res = state.result;
+  const fb = blessingForLevel(res?.level);
+  if (!res) return;
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 22_000) : null;
+
+  try {
+    const response = await fetch('/api/anketa/advice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        test_type: state.test_type,
+        result_score: res.score,
+        result_level: res.level,
+      }),
+      signal: controller?.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok || !data.text) throw new Error('advice unavailable');
+
+    state.aiBlessing = {
+      text: String(data.text),
+      final: String(data.final || fb.final),
+      band: data.band || fb.band,
+      source: data.source === 'deepseek' ? 'deepseek' : 'fallback',
+      loading: false,
+    };
+  } catch {
+    state.aiBlessing = { ...fb, source: 'fallback', loading: false };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+
+  if (state.step !== 'result') return;
+  syncContactFromDom();
+  const textEl = $('.blessing__text');
+  const finalEl = $('.blessing__final');
+  const eyeEl = $('.blessing__eyebrow');
+  const box = $('.blessing');
+  if (textEl && finalEl && state.aiBlessing) {
+    textEl.textContent = state.aiBlessing.text;
+    finalEl.textContent = state.aiBlessing.final;
+    if (eyeEl) eyeEl.textContent = 'Напутствие для вас';
+    box?.classList.remove('blessing--loading');
+    box?.setAttribute('aria-busy', 'false');
+  } else {
+    render();
+  }
 }
 
 async function sendTelegram(silent) {
