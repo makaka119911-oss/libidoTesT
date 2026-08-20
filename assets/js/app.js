@@ -510,7 +510,7 @@ async function sendTelegram(silent) {
   }
   if (!silent && status) status.textContent = 'Отправляем…';
   try {
-    const res = await fetch('/api/send-telegram', {
+    const res = await fetch('/api/anketa/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildPayload()),
@@ -523,7 +523,7 @@ async function sendTelegram(silent) {
     if (btn) btn.textContent = 'Отправить снова';
   } catch (e) {
     if (!silent && status) {
-      status.textContent = 'Telegram: ' + e.message + ' (настрой TELEGRAM_* на Vercel)';
+      status.textContent = 'Telegram: ' + e.message + ' (проверь TELEGRAM_* на сервере)';
     }
   }
 }
