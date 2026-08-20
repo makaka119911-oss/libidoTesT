@@ -87,6 +87,17 @@ function formatResults(payload) {
     message += `   └ Описание: ${escapeHtml(clean(data.season_description, 1000))}\n`;
   }
 
+  const consent = payload.consent || {};
+  const contact = payload.contact || {};
+  message += `\n📋 Согласие 152-ФЗ: ${consent.personal_data ? 'да' : 'нет'}\n`;
+  if (consent.contact_allowed || contact.name || contact.phone || contact.email) {
+    message += `📞 Контакт (по желанию):\n`;
+    message += line('Связь разрешена', consent.contact_allowed ? 'да' : 'нет');
+    if (contact.name) message += line('Имя', contact.name);
+    if (contact.phone) message += line('Телефон', contact.phone);
+    if (contact.email) message += line('Почта', contact.email);
+  }
+
   message += `\n⏰ Дата заполнения: ${escapeHtml(new Date(payload.date || Date.now()).toLocaleString('ru-RU'))}`;
   return chunkText(message, TG_LIMIT - 80);
 }
