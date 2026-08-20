@@ -5,6 +5,7 @@ import {
   menopauseQuestions,
   calculateResult,
 } from './data.js';
+import { blessingForLevel } from './blessings.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -262,6 +263,7 @@ function renderConsentPanel() {
 function renderResult() {
   const res = state.result;
   const typeLabel = state.test_type === 'regular' ? 'Обычный цикл' : 'Менопауза';
+  const blessing = blessingForLevel(res?.level);
   const rows = answerRowsForPdf()
     .map((row) => {
       if (row.isHeader) return `<h4 class="pdf-period">${esc(row.label)}</h4>`;
@@ -285,6 +287,11 @@ function renderResult() {
         <p class="level">${esc(res.level)}</p>
         <p class="hint">${esc(res.desc)}</p>
         ${res.advice ? `<p class="advice">${esc(res.advice)}</p>` : ''}
+        <aside class="blessing" aria-label="Напутствие">
+          <p class="blessing__eyebrow">Напутствие для вас</p>
+          <p class="blessing__text">${esc(blessing.text)}</p>
+          <p class="blessing__final">${esc(blessing.final)}</p>
+        </aside>
         <hr class="pdf-hr">
         ${rows}
       </div>
@@ -484,10 +491,16 @@ function bindEvents() {
 }
 
 function buildPayload() {
+  const blessing = blessingForLevel(state.result?.level);
   return {
     test_type: state.test_type,
     answers: { ...state.answers, test_type: state.test_type },
-    result: state.result,
+    result: {
+      ...state.result,
+      blessing_band: blessing.band,
+      blessing: blessing.text,
+      blessing_final: blessing.final,
+    },
     date: new Date().toISOString(),
     consent: {
       personal_data: Boolean(state.consentPd),

@@ -562,6 +562,38 @@ body {
   margin: 8px 0 0;
 }
 
+.blessing {
+  margin: 16px 0 4px;
+  padding: 14px 14px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(184, 147, 106, 0.35);
+  background:
+    linear-gradient(160deg, rgba(216, 180, 168, 0.28), rgba(255, 254, 249, 0.95));
+}
+
+.blessing__eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+}
+
+.blessing__text {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.blessing__final {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--bordeaux);
+  font-weight: 600;
+}
+
 .platform-note {
   margin-top: 20px;
   padding: 14px 16px;
