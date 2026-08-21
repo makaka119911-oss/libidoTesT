@@ -307,11 +307,11 @@ function renderResult() {
       </div>
       ${renderConsentPanel()}
       <div class="actions">
-        <button type="button" class="btn btn--primary" id="btnTelegram" ${sendDisabled}>${state.telegramSent ? 'Отправить снова' : 'Отправить'}</button>
+        <button type="button" class="btn btn--primary btn--wide" id="btnTelegram" ${sendDisabled}>${state.telegramSent ? 'Отправить снова' : 'Завершить и отправить'}</button>
         <button type="button" class="btn btn--secondary" id="btnPdf">Сохранить PDF</button>
         <button type="button" class="btn btn--ghost" data-action="restart">Новая анкета</button>
       </div>
-      <p id="status" class="status" role="status">${state.telegramSent ? '✓ Отправлено в Telegram' : ''}</p>
+      <p id="status" class="status" role="status">${state.telegramSent ? '✓ Отправлено в Telegram' : (state.consentPd ? '' : 'Отметьте согласие 152-ФЗ — и нажмите «Завершить и отправить»')}</p>
       <aside class="platform-note">
         <p>Исследование продолжается в «Женском мире»</p>
         <a href="${PLATFORM_URL}" target="_blank" rel="noopener noreferrer">Открыть платформу</a>
@@ -474,7 +474,12 @@ function bindEvents() {
     state.aiBlessing = { ...fb, source: 'fallback', loading: true };
     state.step = 'result';
     render();
-    void fetchAiBlessing();
+    void fetchAiBlessing().finally(() => {
+      // Если согласие уже стоит — сразу в Telegram (без дубля при повторном finish)
+      if (state.consentPd && !state.telegramSent) {
+        void sendTelegram(true);
+      }
+    });
   });
 
   $('[data-action="toggle-pd-consent"]')?.addEventListener('click', (e) => {
@@ -483,6 +488,10 @@ function bindEvents() {
     syncContactFromDom();
     state.consentPd = !state.consentPd;
     render();
+    // Авто-отправка при включении согласия на экране результата
+    if (state.step === 'result' && state.consentPd && !state.telegramSent) {
+      void sendTelegram(true);
+    }
   });
 
   $('[data-action="toggle-contact-consent"]')?.addEventListener('click', (e) => {
