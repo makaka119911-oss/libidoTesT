@@ -264,8 +264,8 @@ function renderSeason() {
         </label>
       </div>
       <div class="season-footer">
-        <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep ? '' : 'disabled'}>Завершить анкету</button>
-        ${dep && !state.consentPd ? '<p class="status">Отметьте согласие выше — результат сразу уйдёт исследователю в Telegram</p>' : ''}
+        <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep && state.consentPd ? '' : 'disabled'}>Завершить анкету</button>
+        ${dep && !state.consentPd ? '<p class="status status--warn">☝️ Отметьте галочку согласия выше — без неё результат не отправится</p>' : ''}
         ${dep && state.consentPd ? '<p class="status status--hint">После завершения результат отправится автоматически</p>' : ''}
       </div>
     </section>`;

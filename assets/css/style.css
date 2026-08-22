@@ -569,6 +569,7 @@ body {
 
 .status--ok { color: #2d6a4f; font-weight: 600; }
 .status--hint { color: var(--muted); font-size: 0.82rem; margin-top: 10px; }
+.status--warn { color: #9b4d4d; font-weight: 600; font-size: 0.9rem; margin-top: 10px; }
 
 .advice {
   color: var(--muted);
