@@ -22,6 +22,7 @@ const state = {
   /** @type {{ text: string, final: string, band: string, source: string, loading?: boolean } | null} */
   aiBlessing: null,
   telegramSent: false,
+  telegramSending: false,
   consentPd: false,
   contact: {
     name: '',
@@ -69,12 +70,73 @@ function renderCheckList(question) {
     .join('');
 }
 
-function renderQuestionBlock(q) {
+function renderQuestionBlock(q, missing) {
   return `
-    <div class="question-block" data-qkey="${q.key}">
+    <div class="question-block${missing ? ' question-block--missing' : ''}" data-qkey="${q.key}">
       <p class="question-label">${esc(q.label)}</p>
       <div class="check-list">${renderCheckList(q)}</div>
     </div>`;
+}
+
+function currentPeriodQuestions() {
+  return periodQuestions(PERIODS[state.periodIndex].id);
+}
+
+function firstUnansweredKey(questions) {
+  return questions.find((q) => !state.answers[q.key])?.key || null;
+}
+
+function clearMissingHighlights() {
+  $$('.question-block--missing').forEach((el) => el.classList.remove('question-block--missing'));
+}
+
+function scrollToQuestion(key) {
+  const el = document.querySelector(`.question-block[data-qkey="${key}"]`);
+  if (!el) return;
+  el.classList.add('question-block--missing');
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  window.setTimeout(() => el.classList.remove('question-block--missing'), 3200);
+}
+
+/** @returns {boolean} */
+function validateQuestions(questions) {
+  const missing = firstUnansweredKey(questions);
+  if (!missing) return true;
+  clearMissingHighlights();
+  scrollToQuestion(missing);
+  return false;
+}
+
+/** @returns {boolean} */
+function validateEntireAnketa() {
+  if (state.test_type === 'regular') {
+    for (let i = 0; i < PERIODS.length; i += 1) {
+      const qs = periodQuestions(PERIODS[i].id);
+      const missing = firstUnansweredKey(qs);
+      if (missing) {
+        state.periodIndex = i;
+        state.step = 'period';
+        render();
+        window.setTimeout(() => scrollToQuestion(missing), 60);
+        return false;
+      }
+    }
+  } else if (state.test_type === 'menopause') {
+    const qs = menopauseQuestions();
+    const missing = firstUnansweredKey(qs);
+    if (missing) {
+      state.step = 'menopause';
+      render();
+      window.setTimeout(() => scrollToQuestion(missing), 60);
+      return false;
+    }
+  }
+  return true;
+}
+
+function hasContactData() {
+  const c = state.contact;
+  return Boolean(String(c.name || '').trim() || String(c.phone || '').trim() || String(c.email || '').trim());
 }
 
 function renderProgress() {
@@ -125,9 +187,8 @@ function renderTestType() {
 
 function renderPeriod() {
   const period = PERIODS[state.periodIndex];
-  const questions = periodQuestions(period.id);
-  const blocks = questions.map(renderQuestionBlock).join('');
-  const allAnswered = questions.every((q) => state.answers[q.key]);
+  const questions = currentPeriodQuestions();
+  const blocks = questions.map((q) => renderQuestionBlock(q, false)).join('');
 
   return `
     <section class="screen screen--sheet">
@@ -139,15 +200,14 @@ function renderPeriod() {
       <div class="sheet">${blocks}</div>
       <div class="quiz-nav">
         <button type="button" class="btn btn--ghost" data-action="prev-period" ${state.periodIndex === 0 ? 'disabled' : ''}>Назад</button>
-        <button type="button" class="btn btn--primary" data-action="next-period" ${allAnswered ? '' : 'disabled'}>Далее</button>
+        <button type="button" class="btn btn--primary" data-action="next-period">Далее</button>
       </div>
     </section>`;
 }
 
 function renderMenopause() {
   const questions = menopauseQuestions();
-  const blocks = questions.map(renderQuestionBlock).join('');
-  const allAnswered = questions.every((q) => state.answers[q.key]);
+  const blocks = questions.map((q) => renderQuestionBlock(q, false)).join('');
 
   return `
     <section class="screen screen--sheet">
@@ -159,7 +219,7 @@ function renderMenopause() {
       <div class="sheet">${blocks}</div>
       <div class="quiz-nav">
         <button type="button" class="btn btn--ghost" data-action="back-type">Назад</button>
-        <button type="button" class="btn btn--primary" data-action="next-menopause" ${allAnswered ? '' : 'disabled'}>Далее</button>
+        <button type="button" class="btn btn--primary" data-action="next-menopause">Далее</button>
       </div>
     </section>`;
 }
@@ -173,7 +233,7 @@ function renderSeason() {
       ${renderProgress()}
       <button type="button" class="back" data-action="back-from-season">← Назад</button>
       <h2>Зависимость от сезона</h2>
-      <div class="question-block question-block--plain">
+      <div class="question-block question-block--plain" data-qkey="season_dependency">
         <p class="question-label">Есть ли у Вас зависимость либидо от сезона года?</p>
         <div class="check-list">
           ${OPT.season
@@ -196,8 +256,17 @@ function renderSeason() {
         </label>`
           : ''
       }
+      <div class="consent-panel consent-panel--finish">
+        <label class="consent-check ${state.consentPd ? 'is-on' : ''}" data-action="toggle-pd-consent">
+          <input type="checkbox" id="consentPd" ${state.consentPd ? 'checked' : ''} required>
+          <span class="check-box" aria-hidden="true"></span>
+          <span class="consent-check__text">Я согласна на обработку персональных данных и передачу результата исследователю (152-ФЗ). <a href="${PRIVACY_URL}" target="_blank" rel="noopener noreferrer">Политика</a></span>
+        </label>
+      </div>
       <div class="season-footer">
         <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep ? '' : 'disabled'}>Завершить анкету</button>
+        ${dep && !state.consentPd ? '<p class="status">Отметьте согласие выше — результат сразу уйдёт исследователю в Telegram</p>' : ''}
+        ${dep && state.consentPd ? '<p class="status status--hint">После завершения результат отправится автоматически</p>' : ''}
       </div>
     </section>`;
 }
@@ -229,12 +298,12 @@ function canSendTelegram() {
   return Boolean(state.consentPd);
 }
 
-function renderConsentPanel() {
+function renderContactPanel() {
   const c = state.contact;
   return `
     <div class="consent-panel">
-      <h3 class="consent-panel__title">Перед отправкой</h3>
-      <p class="consent-panel__hint">Оставьте контакт (по желанию), если хотите, чтобы исследователь мог связаться с вами по результатам.</p>
+      <h3 class="consent-panel__title">Контакт по желанию</h3>
+      <p class="consent-panel__hint">Результат уже отправлен. Если хотите, оставьте имя или телефон — исследователь сможет связаться с вами.</p>
       <div class="contact-fields">
         <label class="field">
           <span>Имя (необязательно)</span>
@@ -251,15 +320,17 @@ function renderConsentPanel() {
         <label class="consent-check ${c.allowContact ? 'is-on' : ''}" data-action="toggle-contact-consent">
           <input type="checkbox" id="allowContact" ${c.allowContact ? 'checked' : ''}>
           <span class="check-box" aria-hidden="true"></span>
-          <span class="consent-check__text">Согласна, чтобы исследователь связался со мной по указанному контакту (если оставила)</span>
+          <span class="consent-check__text">Согласна, чтобы исследователь связался со мной по указанному контакту</span>
         </label>
       </div>
-      <label class="consent-check ${state.consentPd ? 'is-on' : ''}" data-action="toggle-pd-consent" style="margin-top:14px">
-        <input type="checkbox" id="consentPd" ${state.consentPd ? 'checked' : ''} required>
-        <span class="check-box" aria-hidden="true"></span>
-        <span class="consent-check__text">Я согласна на обработку персональных данных и их передачу исследователю для научных целей (в соответствии с 152-ФЗ). <a href="${PRIVACY_URL}" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a></span>
-      </label>
     </div>`;
+}
+
+function resultStatusText() {
+  if (state.telegramSending) return 'Отправляем результат в Telegram…';
+  if (state.telegramSent) return '✓ Результат отправлен в Telegram';
+  if (!state.consentPd) return 'Нужно согласие 152-ФЗ на шаге «Сезон»';
+  return 'Нажмите «Повторить отправку», если сообщение не пришло';
 }
 
 function activeBlessing() {
@@ -281,7 +352,13 @@ function renderResult() {
     })
     .join('');
 
-  const sendDisabled = canSendTelegram() ? '' : 'disabled';
+  const contactBtn =
+    state.telegramSent && hasContactData()
+      ? `<button type="button" class="btn btn--secondary btn--wide" id="btnContact">Отправить контакт</button>`
+      : '';
+  const retryBtn = !state.telegramSent
+    ? `<button type="button" class="btn btn--primary btn--wide" id="btnTelegram" ${state.telegramSending ? 'disabled' : ''}>Повторить отправку</button>`
+    : `<button type="button" class="btn btn--ghost btn--wide" id="btnTelegram" ${state.telegramSending ? 'disabled' : ''}>Отправить снова</button>`;
 
   return `
     <section class="screen">
@@ -305,13 +382,14 @@ function renderResult() {
         <hr class="pdf-hr">
         ${rows}
       </div>
-      ${renderConsentPanel()}
+      ${renderContactPanel()}
       <div class="actions">
-        <button type="button" class="btn btn--primary btn--wide" id="btnTelegram" ${sendDisabled}>${state.telegramSent ? 'Отправить снова' : 'Завершить и отправить'}</button>
+        ${retryBtn}
+        ${contactBtn}
         <button type="button" class="btn btn--secondary" id="btnPdf">Сохранить PDF</button>
         <button type="button" class="btn btn--ghost" data-action="restart">Новая анкета</button>
       </div>
-      <p id="status" class="status" role="status">${state.telegramSent ? '✓ Отправлено в Telegram' : (state.consentPd ? '' : 'Отметьте согласие 152-ФЗ — и нажмите «Завершить и отправить»')}</p>
+      <p id="status" class="status${state.telegramSent ? ' status--ok' : ''}" role="status">${esc(resultStatusText())}</p>
       <aside class="platform-note">
         <p>Исследование продолжается в «Женском мире»</p>
         <a href="${PLATFORM_URL}" target="_blank" rel="noopener noreferrer">Открыть платформу</a>
@@ -351,10 +429,6 @@ function render() {
 
 function setAnswer(key, value) {
   state.answers[key] = value;
-}
-
-function periodAllAnswered() {
-  return periodQuestions(PERIODS[state.periodIndex].id).every((q) => state.answers[q.key]);
 }
 
 function syncContactFromDom() {
@@ -397,6 +471,7 @@ function bindEvents() {
       result: null,
       aiBlessing: null,
       telegramSent: false,
+      telegramSending: false,
       consentPd: false,
       contact: { name: '', phone: '', email: '', allowContact: false },
     });
@@ -432,6 +507,7 @@ function bindEvents() {
       if (key === 'season_dependency' && value === 'Нет') {
         delete state.answers.season_description;
       }
+      clearMissingHighlights();
       render();
     });
   });
@@ -448,7 +524,7 @@ function bindEvents() {
   });
 
   $('[data-action="next-period"]')?.addEventListener('click', () => {
-    if (!periodAllAnswered()) return;
+    if (!validateQuestions(currentPeriodQuestions())) return;
     if (state.periodIndex < 3) {
       state.periodIndex += 1;
       render();
@@ -460,26 +536,30 @@ function bindEvents() {
   });
 
   $('[data-action="next-menopause"]')?.addEventListener('click', () => {
-    const ok = menopauseQuestions().every((q) => state.answers[q.key]);
-    if (!ok) return;
+    if (!validateQuestions(menopauseQuestions())) return;
     state.step = 'season';
     render();
   });
 
   $('[data-action="finish"]')?.addEventListener('click', () => {
-    if (!state.answers.season_dependency) return;
+    if (!state.answers.season_dependency) {
+      scrollToQuestion('season_dependency');
+      return;
+    }
+    if (!state.consentPd) {
+      $('.consent-panel--finish')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (!validateEntireAnketa()) return;
+
     const data = { ...state.answers, test_type: state.test_type };
     state.result = calculateResult(data);
     const fb = blessingForLevel(state.result?.level);
     state.aiBlessing = { ...fb, source: 'fallback', loading: true };
     state.step = 'result';
     render();
-    void fetchAiBlessing().finally(() => {
-      // Если согласие уже стоит — сразу в Telegram (без дубля при повторном finish)
-      if (state.consentPd && !state.telegramSent) {
-        void sendTelegram(true);
-      }
-    });
+    void sendTelegram();
+    void fetchAiBlessing();
   });
 
   $('[data-action="toggle-pd-consent"]')?.addEventListener('click', (e) => {
@@ -488,10 +568,6 @@ function bindEvents() {
     syncContactFromDom();
     state.consentPd = !state.consentPd;
     render();
-    // Авто-отправка при включении согласия на экране результата
-    if (state.step === 'result' && state.consentPd && !state.telegramSent) {
-      void sendTelegram(true);
-    }
   });
 
   $('[data-action="toggle-contact-consent"]')?.addEventListener('click', (e) => {
@@ -509,7 +585,12 @@ function bindEvents() {
   $('#btnTelegram')?.addEventListener('click', () => {
     syncContactFromDom();
     if (!canSendTelegram()) return;
-    sendTelegram(false);
+    void sendTelegram();
+  });
+  $('#btnContact')?.addEventListener('click', () => {
+    syncContactFromDom();
+    if (!hasContactData()) return;
+    void sendTelegram({ contactOnly: true });
   });
 }
 
@@ -595,29 +676,48 @@ async function fetchAiBlessing() {
   }
 }
 
-async function sendTelegram(silent) {
+async function sendTelegram(opts = {}) {
+  const contactOnly = Boolean(opts.contactOnly);
   const status = $('#status');
+  if (state.telegramSending) return;
   if (!state.consentPd) {
     if (status) status.textContent = 'Нужно согласие на обработку персональных данных';
     return;
   }
-  if (!silent && status) status.textContent = 'Отправляем…';
+
+  syncContactFromDom();
+  state.telegramSending = true;
+  if (status) {
+    status.classList.remove('status--ok');
+    status.textContent = contactOnly ? 'Отправляем контакт…' : 'Отправляем результат в Telegram…';
+  }
+
   try {
     const res = await fetch('/api/anketa/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildPayload()),
     });
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || 'Ошибка сервера');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || `Ошибка сервера (${res.status})`);
+
     state.telegramSent = true;
-    if (status) status.textContent = '✓ Отправлено в Telegram';
-    const btn = $('#btnTelegram');
-    if (btn) btn.textContent = 'Отправить снова';
-  } catch (e) {
-    if (!silent && status) {
-      status.textContent = 'Telegram: ' + e.message + ' (проверь TELEGRAM_* на сервере)';
+    if (status) {
+      status.textContent = contactOnly
+        ? '✓ Контакт отправлен в Telegram'
+        : '✓ Результат отправлен в Telegram';
+      status.classList.add('status--ok');
     }
+  } catch (e) {
+    if (status) {
+      status.textContent = contactOnly
+        ? `Не удалось отправить контакт: ${e.message}`
+        : `Не удалось отправить: ${e.message}. Нажмите «Повторить отправку».`;
+      status.classList.remove('status--ok');
+    }
+  } finally {
+    state.telegramSending = false;
+    if (state.step === 'result') render();
   }
 }
 
