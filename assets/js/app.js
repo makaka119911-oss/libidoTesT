@@ -181,7 +181,7 @@ function renderTestType() {
           <span class="card__sub">Один блок вопросов</span>
         </button>
       </div>
-      <p class="disclaimer">Результат отправляется специалисту в Telegram после вашего согласия.</p>
+      <p class="disclaimer">Результат отправляется исследователю в Telegram сразу после завершения.</p>
     </section>`;
 }
 
@@ -256,17 +256,10 @@ function renderSeason() {
         </label>`
           : ''
       }
-      <div class="consent-panel consent-panel--finish">
-        <label class="consent-check ${state.consentPd ? 'is-on' : ''}" data-action="toggle-pd-consent">
-          <input type="checkbox" id="consentPd" ${state.consentPd ? 'checked' : ''} required>
-          <span class="check-box" aria-hidden="true"></span>
-          <span class="consent-check__text">Я согласна на обработку персональных данных и передачу результата исследователю (152-ФЗ). <a href="${PRIVACY_URL}" target="_blank" rel="noopener noreferrer">Политика</a></span>
-        </label>
-      </div>
       <div class="season-footer">
-        <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep && state.consentPd ? '' : 'disabled'}>Завершить анкету</button>
-        ${dep && !state.consentPd ? '<p class="status status--warn">☝️ Отметьте галочку согласия выше — без неё результат не отправится</p>' : ''}
-        ${dep && state.consentPd ? '<p class="status status--hint">После завершения результат отправится автоматически</p>' : ''}
+        <button type="button" class="btn btn--primary btn--wide" data-action="finish" ${dep ? '' : 'disabled'}>Завершить анкету</button>
+        ${dep ? '<p class="status status--hint">Результат сразу уйдёт исследователю в Telegram</p>' : ''}
+        <p class="legal-note">Завершая анкету, вы соглашаетесь на передачу результата исследователю. <a href="${PRIVACY_URL}" target="_blank" rel="noopener noreferrer">Политика</a></p>
       </div>
     </section>`;
 }
@@ -295,7 +288,7 @@ function answerRowsForPdf() {
 }
 
 function canSendTelegram() {
-  return Boolean(state.consentPd);
+  return Boolean(state.result);
 }
 
 function renderContactPanel() {
@@ -303,7 +296,7 @@ function renderContactPanel() {
   return `
     <div class="consent-panel">
       <h3 class="consent-panel__title">Контакт по желанию</h3>
-      <p class="consent-panel__hint">Результат уже отправлен. Если хотите, оставьте имя или телефон — исследователь сможет связаться с вами.</p>
+      <p class="consent-panel__hint">Результат уже ушёл в Telegram. Ниже — имя, телефон или почта, если хотите, чтобы исследователь связался с вами.</p>
       <div class="contact-fields">
         <label class="field">
           <span>Имя (необязательно)</span>
@@ -329,7 +322,6 @@ function renderContactPanel() {
 function resultStatusText() {
   if (state.telegramSending) return 'Отправляем результат в Telegram…';
   if (state.telegramSent) return '✓ Результат отправлен в Telegram';
-  if (!state.consentPd) return 'Нужно согласие 152-ФЗ на шаге «Сезон»';
   return 'Нажмите «Повторить отправку», если сообщение не пришло';
 }
 
@@ -352,10 +344,9 @@ function renderResult() {
     })
     .join('');
 
-  const contactBtn =
-    state.telegramSent && hasContactData()
-      ? `<button type="button" class="btn btn--secondary btn--wide" id="btnContact">Отправить контакт</button>`
-      : '';
+  const contactBtn = state.telegramSent
+    ? `<button type="button" class="btn btn--secondary btn--wide" id="btnContact" ${hasContactData() ? '' : 'disabled'}>Отправить исследователю</button>`
+    : '';
   const retryBtn = !state.telegramSent
     ? `<button type="button" class="btn btn--primary btn--wide" id="btnTelegram" ${state.telegramSending ? 'disabled' : ''}>Повторить отправку</button>`
     : `<button type="button" class="btn btn--ghost btn--wide" id="btnTelegram" ${state.telegramSending ? 'disabled' : ''}>Отправить снова</button>`;
@@ -546,12 +537,9 @@ function bindEvents() {
       scrollToQuestion('season_dependency');
       return;
     }
-    if (!state.consentPd) {
-      $('.consent-panel--finish')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
     if (!validateEntireAnketa()) return;
 
+    state.consentPd = true;
     const data = { ...state.answers, test_type: state.test_type };
     state.result = calculateResult(data);
     const fb = blessingForLevel(state.result?.level);
@@ -560,14 +548,6 @@ function bindEvents() {
     render();
     void sendTelegram();
     void fetchAiBlessing();
-  });
-
-  $('[data-action="toggle-pd-consent"]')?.addEventListener('click', (e) => {
-    if (e.target.closest('a')) return;
-    e.preventDefault();
-    syncContactFromDom();
-    state.consentPd = !state.consentPd;
-    render();
   });
 
   $('[data-action="toggle-contact-consent"]')?.addEventListener('click', (e) => {
@@ -608,9 +588,10 @@ function buildPayload() {
     },
     date: new Date().toISOString(),
     consent: {
-      personal_data: Boolean(state.consentPd),
+      personal_data: true,
       contact_allowed: Boolean(state.contact.allowContact),
       law: '152-FZ',
+      implicit: true,
     },
     contact: {
       name: state.contact.name || '',
@@ -680,11 +661,8 @@ async function sendTelegram(opts = {}) {
   const contactOnly = Boolean(opts.contactOnly);
   const status = $('#status');
   if (state.telegramSending) return;
-  if (!state.consentPd) {
-    if (status) status.textContent = 'Нужно согласие на обработку персональных данных';
-    return;
-  }
 
+  state.consentPd = true;
   syncContactFromDom();
   state.telegramSending = true;
   if (status) {

@@ -243,10 +243,23 @@ body {
 }
 
 .season-footer {
-  margin-top: 28px;
+  margin-top: 16px;
   padding-top: 8px;
   padding-bottom: calc(12px + var(--safe-bottom));
 }
+
+.legal-note {
+  margin: 12px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted);
+  text-align: center;
+}
+
+.legal-note a {
+  color: var(--bordeaux);
+}
+
 .field span { color: var(--muted); font-size: 0.78rem; }
 
 .field input,
